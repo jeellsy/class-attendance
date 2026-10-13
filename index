@@ -1,0 +1,315 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>25数字化高技班 晚修考勤系统</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:"Microsoft YaHei",sans-serif;background:#f5f7fa;padding:20px}
+.box{max-width:1200px;margin:0 auto;background:#fff;border-radius:12px;padding:20px;margin-bottom:20px;box-shadow:0 2px 8px rgba(0,0,0,.08)}
+h1{font-size:22px;margin-bottom:16px;color:#333}
+.toolbar{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-bottom:16px}
+.btn{padding:8px 16px;border:none;border-radius:8px;cursor:pointer;font-size:14px}
+.btn-blue{background:#2563eb;color:#fff}
+.btn-blue:hover{background:#1d4ed8}
+.btn-gray{background:#f1f3f4;color:#333}
+.btn-gray:hover{background:#e8eaeb}
+.btn-green{background:#16a34a;color:#fff}
+.btn-green:hover{background:#15803d}
+.btn-orange{background:#f59e0b;color:#fff}
+.btn-orange:hover{background:#d97706}
+.date{padding:8px 12px;border:1px solid #d1d5db;border-radius:8px;font-size:14px}
+.stats{display:flex;gap:24px;font-size:14px;color:#666;margin-top:12px}
+.stats span{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:6px}
+.green-dot{background:#22c55e}
+.red-dot{background:#ef4444}
+.door{text-align:center;color:#9ca3af;font-size:14px;margin:12px 0}
+.grid{display:grid;gap:12px;justify-content:center}
+.seat{height:60px;min-width:85px;display:flex;align-items:center;justify-content:center;border-radius:8px;font-size:14px;font-weight:500;cursor:pointer;user-select:none;border:2px solid transparent;transition:.2s}
+.present{background:#dcfce7;color:#166534;border-color:#86efac}
+.present:hover{background:#bbf7d0}
+.absent{background:#fee2e2;color:#991b1b;border-color:#fca5a5}
+.absent:hover{background:#fecaca}
+.empty{background:#f3f4f6;border:2px dashed #d1d5db;cursor:default}
+.list{color:#666;font-size:14px;line-height:2}
+.modal{position:fixed;inset:0;background:rgba(0,0,0,.5);display:none;align-items:center;justify-content:center;z-index:99}
+.modal.show{display:flex}
+.modal-box{background:#fff;border-radius:12px;padding:24px;width:90%;max-width:500px;max-height:90vh;overflow-y:auto}
+.modal h3{margin-bottom:16px}
+.form-row{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px}
+.form-group label{display:block;font-size:14px;color:#666;margin-bottom:6px}
+.form-group input,.form-group textarea{width:100%;padding:8px 12px;border:1px solid #d1d5db;border-radius:8px;font-size:14px;font-family:inherit}
+.form-group textarea{min-height:160px;resize:vertical}
+.modal-footer{display:flex;justify-content:flex-end;gap:10px;margin-top:20px}
+.quick{display:flex;justify-content:flex-end;gap:8px;margin-bottom:12px}
+</style>
+</head>
+<body>
+
+<div class="box">
+    <h1>25数字化高技班 晚修考勤系统</h1>
+    <div class="toolbar">
+        <label style="font-size:14px;color:#666">日期：</label>
+        <input type="date" id="dateSelect" class="date">
+        <button onclick="openEdit()" class="btn btn-gray">编辑座位</button>
+        <button onclick="exportData()" class="btn btn-blue">导出考勤汇总</button>
+    </div>
+    <div class="stats">
+        <div><span class="green-dot"></span>出勤：<strong id="presentNum">0</strong> 人</div>
+        <div><span class="red-dot"></span>缺勤：<strong id="absentNum">0</strong> 人</div>
+        <div>总人数：<strong id="totalNum">0</strong> 人</div>
+    </div>
+</div>
+
+<div class="box">
+    <div class="door">—— 后 门 ——</div>
+    <div class="quick">
+        <button onclick="markAllPresent()" class="btn btn-green" style="padding:6px 12px;font-size:13px;">一键全勤</button>
+        <button onclick="resetTodayAttendance()" class="btn btn-orange" style="padding:6px 12px;font-size:13px;">重置当日</button>
+    </div>
+    <div id="seatGrid" class="grid"></div>
+    <div class="door">—— 讲 台 · 前 门 ——</div>
+</div>
+
+<div class="box">
+    <h3 style="margin-bottom:12px;font-size:16px">当日缺勤名单</h3>
+    <div id="absentList" class="list">暂无缺勤记录</div>
+</div>
+
+<div id="editModal" class="modal">
+    <div class="modal-box">
+        <h3>编辑座位配置</h3>
+        <div class="form-row">
+            <div class="form-group">
+                <label>行数</label>
+                <input type="number" id="rowInput" value="7" min="1" max="15">
+            </div>
+            <div class="form-group">
+                <label>列数</label>
+                <input type="number" id="colInput" value="7" min="1" max="10">
+            </div>
+        </div>
+        <div class="form-group">
+            <label>学生姓名（每行一个，空位留空行）</label>
+            <textarea id="nameInput"></textarea>
+        </div>
+        <div class="modal-footer">
+            <button onclick="closeEdit()" class="btn btn-gray">取消</button>
+            <button onclick="saveSeatConfig()" class="btn btn-blue">保存</button>
+        </div>
+    </div>
+</div>
+
+<script>
+// 25数字化高技班 晚修座位配置（已移除王铂壬、谭重鑫）
+var defaultConfig = {
+    rows: 7,
+    cols: 7,
+    names: [
+        // 第1排（最上面，靠近后门）
+        "","王梓浩","林宗儒","占腾西","谢鑫斌","","",
+        // 第2排
+        "李泽锋","陈睿","李乐星","邹雅楦","郑昇坪","陈岳荣","",
+        // 第3排
+        "蒲俊铭","龙妍妍","钟熠帆","冯静萱","何育铭","胡俊析","古金燕",
+        // 第4排（谭重鑫已移除）
+        "黄新裕","蔡欣瑜","黄海琪","黄秋婷","黄嘉伟","黄俊淘","",
+        // 第5排
+        "聂如君","赖修墨","杨四妹","高蓉","王伟霖","黄伟俊","罗文杰",
+        // 第6排
+        "王昱智","贺嘉滨","吴廷凯","何娜娜","刘植豪","曹嘉乐","潘宇航",
+        // 第7排（最下面，靠近讲台；王铂壬已移除）
+        "郭秋婷","周子洋","彭俊淼","杨杰锋","","冼嘉文","沈志聪"
+    ]
+};
+
+// 获取配置
+function getConfig() {
+    try {
+        var saved = localStorage.getItem("seatConfig");
+        return saved ? JSON.parse(saved) : defaultConfig;
+    } catch(e) {
+        return defaultConfig;
+    }
+}
+
+// 保存配置
+function saveConfigData(data) {
+    localStorage.setItem("seatConfig", JSON.stringify(data));
+}
+
+// 获取指定日期考勤
+function getAttendance(date) {
+    try {
+        var allData = JSON.parse(localStorage.getItem("attendanceAll") || "{}");
+        return allData[date] || {};
+    } catch(e) {
+        return {};
+    }
+}
+
+// 保存指定日期考勤
+function saveAttendance(date, data) {
+    try {
+        var allData = JSON.parse(localStorage.getItem("attendanceAll") || "{}");
+        allData[date] = data;
+        localStorage.setItem("attendanceAll", JSON.stringify(allData));
+        return true;
+    } catch(e) {
+        alert("保存失败，请检查浏览器存储设置");
+        return false;
+    }
+}
+
+// 渲染座位表
+function renderSeats() {
+    var cfg = getConfig();
+    var date = document.getElementById("dateSelect").value;
+    var att = getAttendance(date);
+    var grid = document.getElementById("seatGrid");
+    grid.style.gridTemplateColumns = "repeat(" + cfg.cols + ", minmax(85px, 1fr))";
+    grid.innerHTML = "";
+    
+    var present = 0, absent = 0;
+    var absentNames = [];
+    
+    for(var i = 0; i < cfg.rows * cfg.cols; i++) {
+        var name = cfg.names[i] || "";
+        var div = document.createElement("div");
+        
+        if(!name) {
+            div.className = "seat empty";
+        } else {
+            var isHere = att[name] === true;
+            if(isHere) { 
+                present++; 
+            } else { 
+                absent++; 
+                absentNames.push(name); 
+            }
+            
+            div.className = "seat " + (isHere ? "present" : "absent");
+            div.innerText = name;
+            
+            // 绑定点击事件
+            div.onclick = (function(n) {
+                return function() { toggleAttendance(n); };
+            })(name);
+        }
+        
+        grid.appendChild(div);
+    }
+    
+    // 更新统计数字
+    document.getElementById("presentNum").innerText = present;
+    document.getElementById("absentNum").innerText = absent;
+    document.getElementById("totalNum").innerText = cfg.names.filter(function(n){ return n; }).length;
+    document.getElementById("absentList").innerText = absentNames.length ? absentNames.join("、") : "暂无缺勤记录";
+}
+
+// 切换单个学生出勤状态
+function toggleAttendance(name) {
+    var date = document.getElementById("dateSelect").value;
+    var att = getAttendance(date);
+    att[name] = att[name] === true ? false : true;
+    saveAttendance(date, att);
+    renderSeats();
+}
+
+// 一键全勤
+function markAllPresent() {
+    if(!confirm("确定将今日全部学生标记为出勤吗？")) return;
+    var cfg = getConfig();
+    var date = document.getElementById("dateSelect").value;
+    var att = {};
+    cfg.names.forEach(function(n) { 
+        if(n) att[n] = true; 
+    });
+    saveAttendance(date, att);
+    renderSeats();
+}
+
+// 重置当日考勤
+function resetTodayAttendance() {
+    if(!confirm("确定重置今日考勤吗？\n重置后所有学生将变为缺勤状态。")) return;
+    var date = document.getElementById("dateSelect").value;
+    var allData = JSON.parse(localStorage.getItem("attendanceAll") || "{}");
+    delete allData[date];
+    localStorage.setItem("attendanceAll", JSON.stringify(allData));
+    renderSeats();
+    alert("今日考勤已重置");
+}
+
+// 打开编辑弹窗
+function openEdit() {
+    var cfg = getConfig();
+    document.getElementById("rowInput").value = cfg.rows;
+    document.getElementById("colInput").value = cfg.cols;
+    document.getElementById("nameInput").value = cfg.names.join("\n");
+    document.getElementById("editModal").classList.add("show");
+}
+
+// 关闭编辑弹窗
+function closeEdit() {
+    document.getElementById("editModal").classList.remove("show");
+}
+
+// 保存座位配置
+function saveSeatConfig() {
+    var rows = parseInt(document.getElementById("rowInput").value) || 7;
+    var cols = parseInt(document.getElementById("colInput").value) || 7;
+    var names = document.getElementById("nameInput").value.split("\n").map(function(n){ return n.trim(); });
+    
+    saveConfigData({ rows: rows, cols: cols, names: names });
+    closeEdit();
+    renderSeats();
+}
+
+// 导出考勤汇总
+function exportData() {
+    var cfg = getConfig();
+    var allData = JSON.parse(localStorage.getItem("attendanceAll") || "{}");
+    var students = cfg.names.filter(function(n){ return n; });
+    var csv = "学生姓名,缺勤天数,缺勤日期\n";
+    
+    students.forEach(function(name) {
+        var absentDays = [];
+        Object.keys(allData).sort().forEach(function(date) {
+            if(allData[date][name] !== true) {
+                absentDays.push(date);
+            }
+        });
+        csv += name + "," + absentDays.length + "," + absentDays.join(";") + "\n";
+    });
+    
+    var blob = new Blob(["\ufeff" + csv], { type: "text/csv;charset=utf-8" });
+    var a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = "25数字化高技班_晚修考勤汇总_" + getTodayStr() + ".csv";
+    a.click();
+}
+
+// 获取今日日期字符串
+function getTodayStr() {
+    var d = new Date();
+    var y = d.getFullYear();
+    var m = String(d.getMonth() + 1).padStart(2, "0");
+    var day = String(d.getDate()).padStart(2, "0");
+    return y + "-" + m + "-" + day;
+}
+
+// 页面初始化
+function init() {
+    document.getElementById("dateSelect").value = getTodayStr();
+    document.getElementById("dateSelect").addEventListener("change", renderSeats);
+    document.getElementById("editModal").addEventListener("click", function(e) {
+        if(e.target === this) closeEdit();
+    });
+    renderSeats();
+}
+
+init();
+</script>
+</body>
+</html>
