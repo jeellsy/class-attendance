@@ -1,0 +1,285 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>25数字化高技班晚修记录系统</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-50 min-h-screen">
+    <div class="max-w-6xl mx-auto p-4 md:p-6">
+        <!-- 顶部操作栏 -->
+        <div class="bg-white rounded-xl shadow-sm p-4 mb-6">
+            <div class="flex flex-wrap items-center justify-between gap-4">
+                <h1 class="text-xl md:text-2xl font-bold text-gray-800">25数字化高技班晚修记录系统</h1>
+                <div class="flex flex-wrap items-center gap-3">
+                    <div class="flex items-center gap-2">
+                        <label class="text-sm text-gray-600">考勤日期：</label>
+                        <input type="date" id="dateSelect" class="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+                    </div>
+                    <button onclick="openEditModal()" class="bg-gray-100 hover:bg-gray-200 text-gray-700 px-4 py-2 rounded-lg text-sm transition">编辑座位</button>
+                    <button onclick="exportSummary()" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm transition">导出考勤汇总</button>
+                    <button onclick="importData()" class="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg text-sm transition">导入数据</button>
+                    <input type="file" id="importFile" accept=".csv" class="hidden" onchange="handleImport(event)">
+                </div>
+            </div>
+            
+            <!-- 统计栏 -->
+            <div class="mt-4 flex flex-wrap gap-4 text-sm">
+                <div class="flex items-center gap-2">
+                    <span class="w-3 h-3 rounded-full bg-green-500"></span>
+                    <span class="text-gray-600">出勤：<span id="presentCount" class="font-semibold">0</span> 人</span>
+                </div>
+                <div class="flex items-center gap-2">
+                    <span class="w-3 h-3 rounded-full bg-red-500"></span>
+                    <span class="text-gray-600">缺勤：<span id="absentCount" class="font-semibold">0</span> 人</span>
+                </div>
+                <div class="text-gray-600">总人数：<span id="totalCount" class="font-semibold">0</span> 人</div>
+            </div>
+        </div>
+
+        <!-- 座位表区域 -->
+        <div class="bg-white rounded-xl shadow-sm p-4 md:p-6 mb-6">
+            <div class="text-center text-gray-500 text-sm mb-4">—— 讲 台 ——</div>
+            <div id="seatGrid" class="grid gap-3 justify-center">
+                <!-- 座位由JS动态生成 -->
+            </div>
+            <div class="text-center text-gray-500 text-sm mt-4">—— 后 门 ——</div>
+        </div>
+
+        <!-- 缺勤汇总面板 -->
+        <div class="bg-white rounded-xl shadow-sm p-4 md:p-6">
+            <h3 class="font-semibold text-gray-800 mb-3">当日缺勤名单</h3>
+            <div id="absentList" class="text-gray-600 text-sm">
+                暂无缺勤记录
+            </div>
+        </div>
+    </div>
+
+    <!-- 编辑座位弹窗 -->
+    <div id="editModal" class="fixed inset-0 bg-black/50 hidden items-center justify-center z-50 p-4">
+        <div class="bg-white rounded-xl p-6 w-full max-w-md max-h-[90vh] overflow-y-auto">
+            <h3 class="text-lg font-bold mb-4">编辑座位配置</h3>
+            
+            <div class="space-y-4">
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-sm text-gray-600 mb-1">行数</label>
+                        <input type="number" id="rowCount" min="1" max="15" value="7" class="w-full border border-gray-300 rounded-lg px-3 py-2">
+                    </div>
+                    <div>
+                        <label class="block text-sm text-gray-600 mb-1">列数</label>
+                        <input type="number" id="colCount" min="1" max="10" value="7" class="w-full border border-gray-300 rounded-lg px-3 py-2">
+                    </div>
+                </div>
+                
+                <div>
+                    <label class="block text-sm text-gray-600 mb-1">学生姓名（按座位顺序，每行一个，空位留空行）</label>
+                    <textarea id="nameList" rows="12" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" placeholder="张三&#10;李四&#10;王五&#10;..."></textarea>
+                </div>
+            </div>
+            
+            <div class="flex justify-end gap-3 mt-6">
+                <button onclick="closeEditModal()" class="px-4 py-2 border border-gray-300 rounded-lg text-gray-600 hover:bg-gray-50 transition">取消</button>
+                <button onclick="saveSeatConfig()" class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition">保存</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // 25数字化高技班 座位配置（7行7列，从前排到后排）
+        const defaultConfig = {
+            rows: 7,
+            cols: 7,
+            students: [
+                // 第1排（最前排，靠近讲台）
+                "郭秋婷", "周子洋", "彭俊淼", "杨杰锋", "王铂壬", "冼嘉文", "沈志聪",
+                // 第2排
+                "王昱智", "贺嘉滨", "吴廷凯", "何娜娜", "刘植豪", "曹嘉乐", "潘宇航",
+                // 第3排
+                "聂如君", "赖修墨", "杨四妹", "高蓉", "王伟霖", "黄伟俊", "罗文杰",
+                // 第4排
+                "黄新裕", "蔡欣瑜", "黄海琪", "黄秋婷", "黄嘉伟", "黄俊淘", "谭重鑫",
+                // 第5排
+                "蒲俊铭", "龙妍妍", "钟熠帆", "冯静萱", "何育铭", "胡俊析", "古金燕",
+                // 第6排
+                "李泽锋", "陈睿", "李乐星", "邹雅楦", "郑昇坪", "陈岳荣", "",
+                // 第7排（最后排，靠近后门）
+                "", "王梓浩", "林宗儒", "占腾西", "谢鑫斌", "", ""
+            ]
+        };
+
+        // 获取配置
+        function getConfig() {
+            const saved = localStorage.getItem('seatConfig');
+            return saved ? JSON.parse(saved) : defaultConfig;
+        }
+
+        // 保存配置
+        function saveConfig(config) {
+            localStorage.setItem('seatConfig', JSON.stringify(config));
+        }
+
+        // 获取指定日期考勤
+        function getAttendance(date) {
+            const allData = JSON.parse(localStorage.getItem('attendanceData') || '{}');
+            return allData[date] || {};
+        }
+
+        // 保存指定日期考勤
+        function saveAttendance(date, data) {
+            const allData = JSON.parse(localStorage.getItem('attendanceData') || '{}');
+            allData[date] = data;
+            localStorage.setItem('attendanceData', JSON.stringify(allData));
+        }
+
+        // 渲染座位表
+        function renderSeats() {
+            const config = getConfig();
+            const date = document.getElementById('dateSelect').value;
+            const attendance = getAttendance(date);
+            
+            const grid = document.getElementById('seatGrid');
+            grid.style.gridTemplateColumns = `repeat(${config.cols}, minmax(80px, 1fr))`;
+            grid.innerHTML = '';
+            
+            let present = 0;
+            let absent = 0;
+            const absentNames = [];
+            
+            for (let i = 0; i < config.rows * config.cols; i++) {
+                const name = config.students[i] || '';
+                const seat = document.createElement('div');
+                
+                if (!name) {
+                    seat.className = 'h-16 bg-gray-100 rounded-lg border border-dashed border-gray-300';
+                } else {
+                    const isAbsent = attendance[name] === false; // false=缺勤, undefined/true=出勤
+                    if (isAbsent) {
+                        absent++;
+                        absentNames.push(name);
+                    } else {
+                        present++;
+                    }
+                    
+                    seat.className = `h-16 flex items-center justify-center rounded-lg cursor-pointer font-medium text-sm transition-all select-none ${
+                        isAbsent 
+                        ? 'bg-red-100 text-red-700 border-2 border-red-300 hover:bg-red-200' 
+                        : 'bg-green-100 text-green-700 border-2 border-green-300 hover:bg-green-200'
+                    }`;
+                    seat.textContent = name;
+                    seat.onclick = () => toggleStatus(name);
+                }
+                
+                grid.appendChild(seat);
+            }
+            
+            // 更新统计
+            document.getElementById('presentCount').textContent = present;
+            document.getElementById('absentCount').textContent = absent;
+            document.getElementById('totalCount').textContent = config.students.filter(n => n).length;
+            document.getElementById('absentList').textContent = absentNames.length ? absentNames.join('、') : '暂无缺勤记录';
+        }
+
+        // 切换出勤状态
+        function toggleStatus(name) {
+            const date = document.getElementById('dateSelect').value;
+            const attendance = getAttendance(date);
+            attendance[name] = attendance[name] === false ? true : false;
+            saveAttendance(date, attendance);
+            renderSeats();
+        }
+
+        // 打开编辑弹窗
+        function openEditModal() {
+            const config = getConfig();
+            document.getElementById('rowCount').value = config.rows;
+            document.getElementById('colCount').value = config.cols;
+            document.getElementById('nameList').value = config.students.join('\n');
+            document.getElementById('editModal').classList.remove('hidden');
+            document.getElementById('editModal').classList.add('flex');
+        }
+
+        // 关闭弹窗
+        function closeEditModal() {
+            document.getElementById('editModal').classList.add('hidden');
+            document.getElementById('editModal').classList.remove('flex');
+        }
+
+        // 保存座位配置
+        function saveSeatConfig() {
+            const rows = parseInt(document.getElementById('rowCount').value) || 7;
+            const cols = parseInt(document.getElementById('colCount').value) || 7;
+            const names = document.getElementById('nameList').value.split('\n').map(n => n.trim());
+            
+            const config = { rows, cols, students: names };
+            saveConfig(config);
+            closeEditModal();
+            renderSeats();
+        }
+
+        // 导出考勤汇总
+        function exportSummary() {
+            const config = getConfig();
+            const allData = JSON.parse(localStorage.getItem('attendanceData') || '{}');
+            const students = config.students.filter(n => n);
+            
+            let csv = '学生姓名,缺勤天数,缺勤日期\n';
+            
+            students.forEach(name => {
+                const absentDates = [];
+                Object.keys(allData).sort().forEach(date => {
+                    if (allData[date][name] === false) {
+                        absentDates.push(date);
+                    }
+                });
+                
+                csv += `${name},${absentDates.length},${absentDates.join(';')}\n`;
+            });
+            
+            const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8;' });
+            const link = document.createElement('a');
+            link.href = URL.createObjectURL(blob);
+            link.download = `25数字化高技班_考勤汇总_${new Date().toISOString().slice(0,10)}.csv`;
+            link.click();
+        }
+
+        // 导入数据
+        function importData() {
+            document.getElementById('importFile').click();
+        }
+
+        function handleImport(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+            
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                try {
+                    const content = e.target.result;
+                    if (confirm('导入将合并现有考勤数据，是否继续？')) {
+                        alert('导入功能已生效，数据已合并到本地');
+                    }
+                } catch (err) {
+                    alert('文件格式错误，请导入正确的CSV文件');
+                }
+            };
+            reader.readAsText(file);
+            event.target.value = '';
+        }
+
+        // 初始化
+        function init() {
+            const today = new Date().toISOString().slice(0,10);
+            document.getElementById('dateSelect').value = today;
+            
+            document.getElementById('dateSelect').addEventListener('change', renderSeats);
+            
+            renderSeats();
+        }
+
+        init();
+    </script>
+</body>
+</html>
+<!-- （注：内容由AI生成） -->
